@@ -2,6 +2,8 @@
 defined('DS') || define('DS', DIRECTORY_SEPARATOR);
 defined('PS') || define('PS', PATH_SEPARATOR);
 define('ROOT', dirname(__FILE__));
+define('FM', basename(__FILE__));
+define('VERSION', '1.0.0');
 
 function d($obj, $die = false) {
     echo '<pre>' . print_r($obj, true) . '</pre>';
@@ -32,6 +34,10 @@ class Request {
         
         return $path === NULL ? BASE_URL : BASE_URL . $path;
     }
+    
+    public function url($path) {
+        return $this->baseUrl('/' . FM . '?d=' . urlencode($path));
+    }
 }
 
 class Folder {
@@ -46,10 +52,11 @@ class Folder {
     }
     
     public function getContent() {
-        if ($this->path) {
+        if ($this->path && is_dir($this->path)) {
             $dh = opendir($this->path);
             if ($dh) {
-                $files = array();
+                $folders = array();
+                $files   = array();
                 while (($file = readdir($dh)) !== FALSE) {
                     if ($file === '.' || $file === '..') {
                         // not a real file
@@ -60,7 +67,7 @@ class Folder {
                         'path' => $this->path . DS . $file
                     );
                     if (preg_match('/^(.*)\.(\w+)$/i', $file, $matches)) {
-                        $info['name'] = $matches[1];
+                        $info['name'] = empty($matches[1]) ? '.' : $matches[1];
                         $info['ext']  = $matches[2];
                         $info['file'] = $file;
                     } else {
@@ -68,13 +75,21 @@ class Folder {
                         $info['name'] = $file;
                         $info['ext']  = '';
                     }
-                    $info['is_dir'] = is_dir($info['path']);
-                    $info['size']   = $info['is_dir'] ? NULL : $this->sizeInHumanReadble(filesize($info['path']));
                     
-                    $files[] = $info;
+                    if (is_dir($info['path'])) {
+                        $info['is_dir'] = true;
+                        $info['size']   = NULL;
+                        $info['ext']    = NULL;
+                        $info['name']   = $file;
+                        $folders[] = $info;
+                    } else {
+                        $info['is_dir'] = false;
+                        $info['size']   = $this->sizeInHumanReadble(filesize($info['path']));
+                        $files[] = $info;
+                    }
                 }
                 
-                return $files;
+                return array_merge($folders, $files);
             }
             
             return false;
@@ -107,12 +122,17 @@ $title    = 'Simple File Manager - GMS';
 $server   = $_SERVER;
 $request  = new Request();
 $base_url = $request->baseUrl();
-$current_dir = $server['DOCUMENT_ROOT'] . $base_url;
-$f = $request->get('f');
-$d = $request->get('d');
-if ($d) {
-    $current_dir .= $d;
+$doc_root = preg_replace('/\/$/i', '', $server['DOCUMENT_ROOT']);
+$current_dir = $doc_root;
+$do = $request->get('do');
+$f  = $request->get('f');
+$d  = urldecode($request->get('d'));
+if (!$d) {
+    $d = $base_url;
+} else {
+    $d = preg_replace('/(\/{2,})/i', '/', $d);
 }
+$current_dir .= $d;
 
 $folder = new Folder($current_dir);
 $files  = $folder->getContent();
@@ -131,13 +151,12 @@ if ($files === false) {
         <title><?php echo $title;?></title>
 
         <!-- Latest compiled and minified CSS -->
-        <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
-
-        <!-- Optional theme -->
-        <link rel="stylesheet" href="http://getbootstrap.com/assets/css/docs.min.css">
+        <?php /*<link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">*/?>
+        <link rel="stylesheet" href="<?php echo $base_url;?>/plugins/bootstrap/3.2.0/css/bootstrap.min.css">
 
         <!-- Font Awesome -->
-        <link href="//maxcdn.bootstrapcdn.com/font-awesome/4.1.0/css/font-awesome.min.css" rel="stylesheet">
+        <?php /*<link href="//maxcdn.bootstrapcdn.com/font-awesome/4.1.0/css/font-awesome.min.css" rel="stylesheet">*/?>
+        <link href="<?php echo $base_url;?>/plugins/font-awesome/4.1.0/css/font-awesome.min.css" rel="stylesheet">
         <!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
         <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
         <!--[if lt IE 9]>
@@ -145,29 +164,49 @@ if ($files === false) {
           <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
         <![endif]-->
         <style type="text/css">
-            .bs-docs-container .row div[role="main"] {
-                padding-top: 30px;
-            }
+            body { padding-top: 70px; padding-bottom: 70px; }
             .right {
                 text-align: right;
             }
+            #actions button {text-align: left;}
+            #actions button i {margin-right: 5px;}
         </style>
     </head>
     <body>
-        <header class="navbar navbar-static-top bs-docs-nav" id="top" role="banner">
+        <nav class="navbar navbar-default navbar-fixed-top" role="navigation">
             <div class="container">
-                <div class="navbar-header">
-                    <a href="https://github.com/globalmediasoft/file-manager" class="navbar-brand">Simple File Manager</a>
+                <div class="row">
+                    <form class="navbar-form navbar-left" role="search">
+                        <div class="form-group">
+                            <div class="input-group">
+                                <span class="input-group-addon"><?php echo $doc_root;?></span>
+                                <input type="text" class="form-control" name="d" placeholder="Current Location" value="<?php echo $d;?>">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Browse</button>
+                    </form>
                 </div>
             </div>
-        </header>
-        <?php if (count($files)): ?>
-        <div class="container bs-docs-container">
+        </nav>
+        <div class="container" id="main">
+            <?php $breadcrumbs = explode('/', $d); if ( $d !== '/' && count($breadcrumbs)):?>
+            <div class="row">
+                <div class="col-md-12">
+                    <ol class="breadcrumb">
+                        <?php $link = ''; foreach ($breadcrumbs as $breadcrumb): $link .= '/' . $breadcrumb ?>
+                        <li><a href="<?php echo $request->url($link);?>"><?php echo empty($breadcrumb) ? '/' : $breadcrumb;?></a></li>
+                        <?php endforeach; ?>
+                    </ol>
+                </div>
+            </div>
+            <?php endif; ?>
+            <?php if ($files && count($files)): ?>
             <div class="row">
                 <div class="col-md-9" role="main">
                     <table class="table table-bordered">
                         <thead>
                             <tr>
+                                <th width="1%"></th>
                                 <th width="1%"></th>
                                 <th>File Name</th>
                                 <th>Ext</th>
@@ -179,39 +218,96 @@ if ($files === false) {
                             <?php foreach ($files as $file): ?>
                             <tr>
                                 <td>
+                                    <input type="checkbox">
+                                </td>
+                                <td>
                                     <?php if ($file['is_dir']): ?>
                                     <i class="fa fa-folder"></i>
                                     <?php else: ?>
                                     <i class="fa fa-file"></i>
                                     <?php endif; ?>
                                 </td>
-                                <td><?php echo $file['name'];?></td>
+                                <td>
+                                    <?php if ($file['is_dir']): ?>
+                                        <?php if (empty($file['name'])): ?>
+                                        <?php else: ?>
+                                        <a href="<?php echo $request->url($d . '/' . $file['name']);?>"><?php echo $file['name'];?></a>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        <?php echo $file['name'];?>
+                                    <?php endif; ?>
+                                </td>
                                 <td><?php echo $file['ext'];?></td>
-                                <td class="right"><?php echo $file['size'] ? $file['size']['size'] . ' ' . $file['size']['in'] : '';?></td>
+                                <td class="right">
+                                    <?php if ($file['size']): ?>
+                                    <?php echo $file['size']['size'] . ' ' . $file['size']['in'];?>
+                                    <?php else: ?>
+                                    <a href="javascript:void(0)">Calculate</a>
+                                    <?php endif ; ?>
+                                </td>
                             </tr>
                             <?php endforeach; ?>
                         </tbody>
                     </table>
                 </div>
-                <div class="col-md-3">
-                    <div class="bs-docs-sidebar hidden-print hidden-xs hidden-sm affix" role="complementary" data-spy="affix" data-offset-top="120">
-                        <ul class="nav bs-docs-sidenav">
-                        </ul>
+                
+                <div class="col-md-3" id="actions">
+                    <div class="panel panel-primary">
+                        <div class="panel-heading">
+                            <h3 class="panel-title">Actions</h3>
+                        </div>
+                        <div class="panel-body">
+                            <button type="button" class="btn btn-default btn-block"><i class="fa fa-compress"></i>Compress</button>
+                            
+                            <button type="button" class="btn btn-default btn-block"><i class="fa fa-plus"></i>Create Folder</button>
+                            <button type="button" class="btn btn-danger btn-block"><i class="fa fa-times-circle"></i>Delete</button>
+                        </div>
                     </div>
                 </div>
             </div>
+            <?php elseif ($error): ?>
+            <div class="alert alert-danger" role="alert"><?php echo $error;?></div>
+            <?php endif; ?>
         </div>
-        <?php elseif ($error): ?>
-        <div class="alert alert-danger" role="alert"><?php echo $error;?></div>
-        <?php endif; ?>
+        
+        <nav class="navbar navbar-default navbar-fixed-bottom" role="navigation">
+            <div class="container">
+                <ul class="nav navbar-nav">
+                    <li><a href="https://github.com/globalmediasoft/file-manager" target="_blank">Simple File Manager</a></li>
+                    <li class="disabled"><a href="javascript:void(0)">v<?php echo VERSION;?></a></li>
+                </ul>
+            </div>
+        </nav>
 
         <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
-        <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+        <?php /*<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>*/?>
+        <script src="<?php echo $base_url;?>/plugins/jquery/1.11.1/jquery.min.js"></script>
         <!-- Latest compiled and minified JavaScript -->
-        <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
+        <?php /*<script src="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>*/?>
+        <script src="<?php echo $base_url;?>/plugins/bootstrap/3.2.0/js/bootstrap.min.js"></script>
         <script type="text/javascript">
+            var actionsHolder, actionsWidth;
             $(document).ready(function() {
-                
+                actionsHolder = $('#actions');
+                actionsWidth  = actionsHolder.width() + 30;
+                actionsHolder.affix({
+                    offset: {
+                        top: 0
+                    }
+                });
+                actionsHolder.bind('affix.bs.affix', function() {
+                    $(this).css({
+                        'margin-left': $('div[role="main"]').width() + 30,
+                        width: actionsWidth,
+                        top: 60
+                    });
+                });
+                actionsHolder.bind('affixed-top.bs.affix', function() {
+                    $(this).css({
+                        'margin-left': '0',
+                        top: 0
+                    });
+                });
             });
         </script>
     </body>
