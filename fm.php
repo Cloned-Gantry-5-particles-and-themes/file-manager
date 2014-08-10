@@ -85,6 +85,7 @@ class Folder {
                     } else {
                         $info['is_dir'] = false;
                         $info['size']   = $this->sizeInHumanReadble(filesize($info['path']));
+                        $info['ext']    = strtolower($info['ext']);
                         $files[] = $info;
                     }
                 }
@@ -213,7 +214,33 @@ if ($files === false) {
                                 <th class="right">Size</th>
                             </tr>
                         </thead>
-                        
+                        <?php
+                        $extensions = array(
+                            'xls' => 'fa-file-excel-o',
+                            'xlsx' => 'fa-file-excel-o',
+                            'doc' => 'fa-file-word-o',
+                            'docx' => 'fa-file-word-o',
+                            'ppt' => 'fa-file-powerpoint-o',
+                            'pptx' => 'fa-file-powerpoint-o',
+                            'pdf' => 'fa-file-pdf-o',
+                            
+                            'php' => 'fa-file-code-o',
+                            'js' => 'fa-file-code-o',
+                            
+                            'mp3' => 'fa-file-sound-o',
+                            'mp4' => 'fa-file-video-o',
+                            'flv' => 'fa-file-video-o',
+                            
+                            'jpg' => 'fa-file-image-o',
+                            'png' => 'fa-file-image-o',
+                            'gif' => 'fa-file-image-o',
+                            
+                            'rar' => 'fa-file-archive-o',
+                            'zip' => 'fa-file-archive-o',
+                            'gz' => 'fa-file-archive-o',
+                            '7z' => 'fa-file-archive-o'
+                        );
+                        ?>
                         <tbody>
                             <?php foreach ($files as $file): ?>
                             <tr>
@@ -223,8 +250,10 @@ if ($files === false) {
                                 <td>
                                     <?php if ($file['is_dir']): ?>
                                     <i class="fa fa-folder"></i>
+                                    <?php elseif ($file['ext'] && isset($extensions[$file['ext']])): ?>
+                                    <i class="fa <?php echo $extensions[$file['ext']];?>"></i>
                                     <?php else: ?>
-                                    <i class="fa fa-file"></i>
+                                    <i class="fa fa-file-o"></i>
                                     <?php endif; ?>
                                 </td>
                                 <td>
